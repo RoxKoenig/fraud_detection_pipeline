@@ -50,6 +50,14 @@ jobs:
           docker exec -i fraud_detection_db psql -U admin -d fraud_detection_db -c "\dt"
           docker exec -i fraud_detection_db psql -U admin -d fraud_detection_db -c "SELECT COUNT(*) FROM transactions;"
 
+      # Step 4.2: Start Gunicorn App on Port 5000
+      - name: Start Gunicorn App
+        run: |
+          docker run -d --name python_app -p 5000:5000 \
+            fraud-detection-app
+          echo "Waiting for the Gunicorn app to be ready..."
+          sleep 10
+
       # Step 5: Verify Database Connection
       - name: Test Database Connection
         env:
@@ -122,19 +130,7 @@ jobs:
           source .venv/bin/activate
           python main.py
 
-      # Step 11: Start the application
-      - name: Start Application
-        env:
-          DB_NAME: fraud_detection_db
-          DB_USER: admin
-          DB_PASSWORD: password
-          DB_HOST: localhost
-          DB_PORT: 5432
-        run: |
-          source .venv/bin/activate
-          python app.py
-
-      # Step 12: Notify the team
+      # Step 11: Notify the team
       - name: Notify Team
         if: success()
         uses: slackapi/slack-github-action@v1.23.0
@@ -143,9 +139,9 @@ jobs:
           text: "MLOps pipeline completed successfully with database integration!"
           bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
 
-      # Step 13: Cleanup Docker
+      # Step 12: Cleanup Docker
       - name: Clean up Docker containers
         run: |
-          docker stop fraud_detection_db
-          docker rm fraud_detection_db
+          docker stop fraud_detection_db python_app
+          docker rm fraud_detection_db python_app
 
