@@ -51,26 +51,27 @@ jobs:
           DB_HOST: localhost
           DB_PORT: 5432
         run: |
+          source .venv/bin/activate
           python - <<EOF
-          import psycopg2
-          import os
+import psycopg2
+import os
 
-          db_config = {
-              'dbname': os.getenv('DB_NAME'),
-              'user': os.getenv('DB_USER'),
-              'password': os.getenv('DB_PASSWORD'),
-              'host': os.getenv('DB_HOST'),
-              'port': os.getenv('DB_PORT'),
-          }
+db_config = {
+    'dbname': os.getenv('DB_NAME'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),
+    'host': os.getenv('DB_HOST'),
+    'port': os.getenv('DB_PORT'),
+}
 
-          try:
-              conn = psycopg2.connect(**db_config)
-              print('Database connection successful!')
-              conn.close()
-          except Exception as e:
-              print(f'Error: {e}')
-              exit(1)
-          EOF
+try:
+    conn = psycopg2.connect(**db_config)
+    print('Database connection successful!')
+    conn.close()
+except Exception as e:
+    print(f'Error: {e}')
+    exit(1)
+EOF
 
       # Step 6: Generate monthly data
       - name: Generate Monthly Data
