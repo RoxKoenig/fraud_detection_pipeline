@@ -34,13 +34,21 @@ jobs:
       - name: Start Dockerized Database
         run: |
           docker pull postgres:latest
-          docker run -d --name fraud_db -p 5432:5432 \
+          docker run -d --name fraud_detection_db -p 5432:5432 \
             -e POSTGRES_DB=fraud_detection_db \
             -e POSTGRES_USER=admin \
             -e POSTGRES_PASSWORD=password \
             postgres:latest
           echo "Waiting for the database to be ready..."
           sleep 10
+
+      # Step 4.1: Load Dataset into Database
+      - name: Load Dataset into Database
+        run: |
+          docker cp fraud_detection_db_backup.sql fraud_detection_db:/fraud_detection_db_backup.sql
+          docker exec -i fraud_detection_db psql -U admin -d fraud_detection_db -f /fraud_detection_db_backup.sql
+          docker exec -i fraud_detection_db psql -U admin -d fraud_detection_db -c "\dt"
+          docker exec -i fraud_detection_db psql -U admin -d fraud_detection_db -c "SELECT COUNT(*) FROM transactions;"
 
       # Step 5: Verify Database Connection
       - name: Test Database Connection
@@ -64,7 +72,7 @@ jobs:
           DB_PORT: 5432
         run: |
           source .venv/bin/activate
-           python generate_monthly_data.py --month 1 --output_path output.csv
+          python generate_monthly_data.py --month 1 --output_path output.csv
 
       # Step 7: Detect data drift
       - name: Detect Data Drift
@@ -138,6 +146,6 @@ jobs:
       # Step 13: Cleanup Docker
       - name: Clean up Docker containers
         run: |
-          docker stop fraud_db
-          docker rm fraud_db
+          docker stop fraud_detection_db
+          docker rm fraud_detection_db
 
