@@ -18,7 +18,7 @@ def fetch_monthly_data(month, output_path=None):
         SELECT *
         FROM (
             SELECT 
-                transaction_id, 
+                id, 
                 transaction_date, 
                 amount, 
                 customer_id, 
