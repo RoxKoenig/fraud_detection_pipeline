@@ -52,7 +52,7 @@ jobs:
           DB_PORT: 5432
         run: |
           source .venv/bin/activate
-          python verify_db_connection.py
+          python database.py
 
       # Step 6: Generate monthly data
       - name: Generate Monthly Data
