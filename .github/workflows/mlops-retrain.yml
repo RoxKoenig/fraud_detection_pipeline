@@ -49,8 +49,13 @@ jobs:
           docker exec -i fraud_detection_db psql -U admin -d fraud_detection_db -f /fraud_detection_db_backup.sql
           docker exec -i fraud_detection_db psql -U admin -d fraud_detection_db -c "\dt"
           docker exec -i fraud_detection_db psql -U admin -d fraud_detection_db -c "SELECT COUNT(*) FROM transactions;"
+          
+      # Step 4.2.1: Build Docker Image for Gunicorn App
+      - name: Build Docker Image for Gunicorn App
+        run: |
+          docker build -t fraud-detection-app .   
 
-      # Step 4.2: Start Gunicorn App on Port 5000
+      # Step 4.2.2: Start Gunicorn App on Port 5000
       - name: Start Gunicorn App
         run: |
           docker run -d --name python_app -p 5000:5000 \
