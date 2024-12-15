@@ -72,7 +72,6 @@ except Exception as e:
     print(f'Error: {e}')
     exit(1)
 EOF
-
       # Step 6: Generate monthly data
       - name: Generate Monthly Data
         env:
