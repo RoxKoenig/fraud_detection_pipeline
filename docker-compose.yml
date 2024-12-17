@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   postgres:
     container_name: fraud_detection_db
-    image: postgres:17  # Use a specific version for stability
+    image: postgres:17  # Use a stable version
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
@@ -20,30 +18,17 @@ services:
 
   app:
     build:
-      context: "/home/rox/SynologyDrive/Uni/Backups/Python Code/fraud-detection"
+      context: .
       dockerfile: Dockerfile
-    container_name: python_app
+    container_name: flask_mlflow_app
     ports:
       - "5000:5000"
-    volumes:
-      - "/home/rox/SynologyDrive/Uni/Backups/Python Code/fraud-detection:/app"
-    environment:
-      FLASK_ENV: development
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  mlflow:
-    image: mlflow/mlflow:latest
-    container_name: mlflow_server
-    ports:
       - "5001:5001"
-    environment:
-      MLFLOW_TRACKING_URI: "postgresql://admin:password@fraud_detection_db:5432/mlflow"
-      BACKEND_STORE_URI: "postgresql://admin:password@fraud_detection_db:5432"
-      ARTIFACT_ROOT: "/mlflow/artifacts"
     volumes:
-      - mlflow_data:/mlflow/artifacts
+      - .:/app
+    environment:
+      - FLASK_ENV=development
+      - MLFLOW_TRACKING_URI=postgresql://admin:password@fraud_detection_db:5432/mlflow
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,6 +36,4 @@ services:
 volumes:
   postgres_data:
     name: fraud-detection_postgres_data
-  mlflow_data:
-    name: fraud-detection_mlflow_data
 
