@@ -18,6 +18,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    command: >
+      bash -c "
+      docker-entrypoint.sh postgres & sleep 5;
+      until pg_isready -h localhost -U admin -d fraud_detection_db; do
+        echo 'Waiting for PostgreSQL to be ready...';
+        sleep 2;
+      done;
+      echo 'Creating mlflow database if not exists...';
+      psql -U admin -d fraud_detection_db -tc 'SELECT 1 FROM pg_database WHERE datname = \"mlflow\"' | grep -q 1 || psql -U admin -d fraud_detection_db -c 'CREATE DATABASE mlflow;';
+      wait"
 
   # MLflow Server Service
   mlflow:
@@ -41,17 +51,11 @@ services:
       timeout: 10s
       retries: 10
     command: >
-      bash -c "
-      echo 'Waiting for PostgreSQL to be ready...';
-      for i in {1..30}; do
-        pg_isready -h fraud_detection_db -p 5432 -U admin && break || sleep 5;
-      done;
-      echo 'PostgreSQL is ready. Starting MLflow server...';
-      mlflow server \
-        --backend-store-uri postgresql://admin:password@fraud_detection_db:5432/mlflow \
-        --default-artifact-root /mlflow/artifacts \
-        --host 0.0.0.0 --port 5001
-      "
+      mlflow server 
+      --backend-store-uri postgresql://admin:password@fraud_detection_db:5432/mlflow 
+      --default-artifact-root /mlflow/artifacts 
+      --host 0.0.0.0 
+      --port 5001
 
   # Flask Application Service
   app:
