@@ -1,15 +1,25 @@
+import os
 import mlflow
 import mlflow.sklearn
 from flask import Flask, request, jsonify
 import numpy as np
 from pydantic import BaseModel
 
+# Set the MLflow tracking URI (include the port)
+MLFLOW_TRACKING_URI = "http://localhost:5001"
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+
 # Initialize Flask app
 app = Flask(__name__)
 
 # Load the MLflow model
 # Update the model URI based on your setup
-model = mlflow.sklearn.load_model("models:/fraud_detection_model/1")  # Replace with the correct model URI
+try:
+    model = mlflow.sklearn.load_model("models:/fraud_detection_model/1")  # Replace with the correct model URI
+    print(f"Model successfully loaded from MLflow tracking server at {MLFLOW_TRACKING_URI}")
+except Exception as e:
+    print(f"Error loading the model: {e}")
+    model = None
 
 # Define a class to handle the incoming request data (using Pydantic for validation)
 class PredictionRequest(BaseModel):
@@ -36,6 +46,9 @@ def predict():
                               prediction_request.feature4]])
         
         # Predict using the loaded model
+        if model is None:
+            raise ValueError("Model is not loaded. Check the MLflow server connection.")
+        
         prediction = model.predict(features)
         
         # Return the prediction result as a JSON response
@@ -48,7 +61,7 @@ def predict():
 # Root route to confirm the app is running
 @app.route('/')
 def home():
-    return "Fraud Detection Model is running!"
+    return f"Fraud Detection Model is running and connected to MLflow at {MLFLOW_TRACKING_URI}"
 
 # Run the app (use host='0.0.0.0' for production)
 if __name__ == '__main__':
