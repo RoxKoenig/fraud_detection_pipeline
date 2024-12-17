@@ -1,72 +1,80 @@
+version: "3.9"  # Specify Docker Compose file version
+
 services:
   # PostgreSQL Service
   postgres:
     container_name: fraud_detection_db
-    image: postgres:17  # Stable PostgreSQL version
+    image: postgres:17  # Use PostgreSQL version 17
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
       POSTGRES_DB: fraud_detection_db
     ports:
-      - "5432:5432"
+      - "5432:5432"  # Expose PostgreSQL on port 5432
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data  # Persist database data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d fraud_detection_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # MLflow Server Service (Build locally)
+  # MLflow Server Service
   mlflow:
     build:
-      context: .
+      context: .  # Build MLflow from the current directory
       dockerfile: mlflow.Dockerfile
     container_name: mlflow_server
     ports:
-      - "5001:5001"  # Expose MLflow on port 5001
+      - "5001:5001"  # Map MLflow's internal port 5001 to the host
     environment:
-      BACKEND_STORE_URI: "postgresql://admin:password@fraud_detection_db:5432"
+      BACKEND_STORE_URI: "postgresql://admin:password@fraud_detection_db:5432/mlflow"
       ARTIFACT_ROOT: "/mlflow/artifacts"
     volumes:
-      - mlflow_data:/mlflow/artifacts
+      - mlflow_data:/mlflow/artifacts  # Persist MLflow artifacts
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_healthy  # Ensure PostgreSQL is healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "curl --silent --fail http://localhost:5001 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
     command: >
-      mlflow server 
-      --backend-store-uri postgresql://admin:password@fraud_detection_db:5432 
-      --default-artifact-root /mlflow/artifacts 
-      --host 0.0.0.0 
-      --port 5001
+      bash -c "
+      echo 'Waiting for PostgreSQL to be ready...';
+      for i in {1..30}; do
+        pg_isready -h fraud_detection_db -p 5432 -U admin && break || sleep 5;
+      done;
+      echo 'PostgreSQL is ready. Starting MLflow server...';
+      mlflow server \
+        --backend-store-uri postgresql://admin:password@fraud_detection_db:5432/mlflow \
+        --default-artifact-root /mlflow/artifacts \
+        --host 0.0.0.0 --port 5001
+      "
 
   # Flask Application Service
   app:
     build:
-      context: .
+      context: .  # Build Flask app from the current directory
       dockerfile: Dockerfile
     container_name: flask_mlflow_app
     ports:
-      - "5000:5000"
+      - "5000:5000"  # Map Flask's internal port 5000 to the host
     volumes:
-      - .:/app
+      - .:/app  # Mount the application files
     environment:
       - FLASK_ENV=development
-      - MLFLOW_TRACKING_URI=http://mlflow_server:5001
+      - MLFLOW_TRACKING_URI=http://mlflow_server:5001  # Point Flask app to MLflow
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_healthy  # Ensure PostgreSQL is healthy
       mlflow:
-        condition: service_healthy
+        condition: service_healthy  # Ensure MLflow server is healthy
 
 volumes:
   postgres_data:
-    name: fraud-detection_postgres_data
+    name: fraud-detection_postgres_data  # Persistent volume for PostgreSQL
   mlflow_data:
-    name: fraud-detection_mlflow_data
+    name: fraud-detection_mlflow_data  # Persistent volume for MLflow artifacts
 
