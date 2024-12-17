@@ -31,7 +31,7 @@ jobs:
           pip install psycopg2
 
       # Step 4: Set up Docker and Docker Compose
-      - name: Install Docker Compose (if missing)
+      - name: Install Docker Compose
         run: |
           sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
@@ -41,45 +41,59 @@ jobs:
         run: |
           docker-compose up --build -d
           echo "Waiting for services to be ready..."
+
+          # Wait for PostgreSQL readiness
+          echo "Checking PostgreSQL readiness..."
+          for i in {1..30}; do
+            docker exec fraud_detection_db pg_isready -U admin -d fraud_detection_db && break
+            echo "PostgreSQL not ready yet. Retrying in 5 seconds..."
+            sleep 5
+          done
+
+          # Wait for MLflow readiness
+          echo "Checking MLflow server readiness..."
           for i in {1..30}; do
             curl --silent --fail http://localhost:5001 || true
             if [ $? -eq 0 ]; then
               echo "MLflow server is ready."
-              exit 0
+              break
             fi
             echo "MLflow server not ready yet. Retrying in 5 seconds..."
             sleep 5
           done
-          echo "MLflow server failed to start."
-          docker-compose logs
-          exit 1
 
-      # Step 6: Load Database Backup
+      # Step 6: Show Logs on Failure
+      - name: Show Logs on Failure
+        if: failure()
+        run: |
+          echo "Showing PostgreSQL logs..."
+          docker logs fraud_detection_db || true
+
+          echo "Showing MLflow logs..."
+          docker logs mlflow_server || true
+
+      # Step 7: Load Database Backup
       - name: Load Database Backup
         env:
           DB_USER: admin
           DB_PASSWORD: password
           DB_NAME: fraud_detection_db
-          DB_HOST: localhost
-          DB_PORT: 5432
         run: |
           echo "Loading database backup..."
           docker exec -i fraud_detection_db psql -U $DB_USER -d $DB_NAME < fraud_detection_db_backup.sql
 
-      # Step 7: Verify Database Connection
+      # Step 8: Verify Database Connection
       - name: Test Database Connection
         env:
           DB_NAME: fraud_detection_db
           DB_USER: admin
           DB_PASSWORD: password
-          DB_HOST: localhost
-          DB_PORT: 5432
         run: |
           source .venv/bin/activate
           python database.py
 
-      # Step 8: Generate Monthly Data
-      - name: Generate Monthly Data
+      # Step 9: Run MLOps Pipeline Scripts
+      - name: Run Main Pipeline Steps
         env:
           DB_NAME: fraud_detection_db
           DB_USER: admin
@@ -88,57 +102,22 @@ jobs:
           DB_PORT: 5432
         run: |
           source .venv/bin/activate
+          echo "Generating monthly data..."
           python generate_monthly_data.py --month 1 --output_path output.csv
 
-      # Step 9: Detect Data Drift
-      - name: Detect Data Drift
-        env:
-          DB_NAME: fraud_detection_db
-          DB_USER: admin
-          DB_PASSWORD: password
-          DB_HOST: localhost
-          DB_PORT: 5432
-        run: |
-          source .venv/bin/activate
+          echo "Detecting data drift..."
           python data_drift.py
 
-      # Step 10: Retrain Model
-      - name: Retrain Model
-        env:
-          DB_NAME: fraud_detection_db
-          DB_USER: admin
-          DB_PASSWORD: password
-          DB_HOST: localhost
-          DB_PORT: 5432
-        run: |
-          source .venv/bin/activate
+          echo "Retraining model..."
           python retrain.py
 
-      # Step 11: Deploy the Model
-      - name: Deploy Model
-        env:
-          DB_NAME: fraud_detection_db
-          DB_USER: admin
-          DB_PASSWORD: password
-          DB_HOST: localhost
-          DB_PORT: 5432
-        run: |
-          source .venv/bin/activate
+          echo "Deploying model..."
           python deploy_model.py
 
-      # Step 12: Run Main Pipeline Script
-      - name: Run Main Pipeline Script
-        env:
-          DB_NAME: fraud_detection_db
-          DB_USER: admin
-          DB_PASSWORD: password
-          DB_HOST: localhost
-          DB_PORT: 5432
-        run: |
-          source .venv/bin/activate
+          echo "Running main script..."
           python main.py
 
-      # Step 13: Notify the Team
+      # Step 10: Notify the Team
       - name: Notify Team on Success
         if: success()
         uses: slackapi/slack-github-action@v1.23.0
@@ -147,8 +126,8 @@ jobs:
           text: "✅ MLOps pipeline completed successfully with database integration and backup loaded!"
           bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
 
-      # Step 14: Cleanup Docker Containers
-      - name: Clean up Docker containers
+      # Step 11: Cleanup Docker Containers
+      - name: Clean up Docker Containers
         run: |
           docker-compose down
 
