@@ -5,64 +5,56 @@ from flask import Flask, request, jsonify
 import numpy as np
 from pydantic import BaseModel
 
-# Set the MLflow tracking URI (include the port)
-MLFLOW_TRACKING_URI = "http://localhost:5001"
+# Set MLflow Tracking URI
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Load the MLflow model
-# Update the model URI based on your setup
+# Load the MLflow model (modify to local artifact path)
 try:
-    model = mlflow.sklearn.load_model("models:/fraud_detection_model/1")  # Replace with the correct model URI
-    print(f"Model successfully loaded from MLflow tracking server at {MLFLOW_TRACKING_URI}")
+    # Option 1: From the registry (ensure paths are correct inside the container)
+    model = mlflow.pyfunc.load_model("models:/fraud_detection_model/2")
+
+    # Option 2: Load directly from artifacts folder (as fallback)
+    # model = mlflow.sklearn.load_model("/mlflow/artifacts/fraud_detection_model_v2")
+    print(f"✅ Model successfully loaded from MLflow tracking server at {MLFLOW_TRACKING_URI}")
 except Exception as e:
-    print(f"Error loading the model: {e}")
+    print(f"❌ Error loading the model: {e}")
     model = None
 
-# Define a class to handle the incoming request data (using Pydantic for validation)
+# Input validation with Pydantic
 class PredictionRequest(BaseModel):
     feature1: float
     feature2: float
     feature3: float
     feature4: float
-    # Add all the necessary features that your model requires
 
-# API route to handle predictions
+# Prediction endpoint
 @app.route('/predict', methods=['POST'])
 def predict():
+    if model is None:
+        return jsonify({"error": "Model is not loaded. Please check the MLflow server connection."}), 500
+
     try:
-        # Parse the incoming JSON request
         data = request.get_json()
-        
-        # Extract features from the incoming data
-        prediction_request = PredictionRequest(**data)  # Using Pydantic to validate input
-        
-        # Convert features to the correct format for prediction (2D numpy array)
-        features = np.array([[prediction_request.feature1, 
-                              prediction_request.feature2, 
-                              prediction_request.feature3, 
+        prediction_request = PredictionRequest(**data)
+
+        features = np.array([[prediction_request.feature1,
+                              prediction_request.feature2,
+                              prediction_request.feature3,
                               prediction_request.feature4]])
-        
-        # Predict using the loaded model
-        if model is None:
-            raise ValueError("Model is not loaded. Check the MLflow server connection.")
-        
         prediction = model.predict(features)
-        
-        # Return the prediction result as a JSON response
         return jsonify({"prediction": int(prediction[0])})
 
     except Exception as e:
-        # Handle errors gracefully
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
-# Root route to confirm the app is running
 @app.route('/')
 def home():
-    return f"Fraud Detection Model is running and connected to MLflow at {MLFLOW_TRACKING_URI}"
+    return f"✅ Fraud Detection Model is running and connected to MLflow at {MLFLOW_TRACKING_URI}"
 
-# Run the app (use host='0.0.0.0' for production)
 if __name__ == '__main__':
-    app.run(debug=True)  # Set debug to False in production
+    PORT = int(os.getenv("PORT", 5001))
+    app.run(host='0.0.0.0', port=PORT, debug=False)
