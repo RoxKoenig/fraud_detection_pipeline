@@ -43,7 +43,19 @@ jobs:
           echo "Waiting for services to be ready..."
           sleep 20
 
-      # Step 6: Verify Database Connection
+      # Step 6: Load Database Backup
+      - name: Load Database Backup
+        env:
+          DB_USER: admin
+          DB_PASSWORD: password
+          DB_NAME: fraud_detection_db
+          DB_HOST: localhost
+          DB_PORT: 5432
+        run: |
+          echo "Loading database backup..."
+          docker exec -i fraud_detection_db psql -U $DB_USER -d $DB_NAME < fraud_detection_db_backup.sql
+
+      # Step 7: Verify Database Connection
       - name: Test Database Connection
         env:
           DB_NAME: fraud_detection_db
@@ -55,7 +67,7 @@ jobs:
           source .venv/bin/activate
           python database.py
 
-      # Step 7: Generate Monthly Data
+      # Step 8: Generate Monthly Data
       - name: Generate Monthly Data
         env:
           DB_NAME: fraud_detection_db
@@ -67,7 +79,7 @@ jobs:
           source .venv/bin/activate
           python generate_monthly_data.py --month 1 --output_path output.csv
 
-      # Step 8: Detect Data Drift
+      # Step 9: Detect Data Drift
       - name: Detect Data Drift
         env:
           DB_NAME: fraud_detection_db
@@ -79,7 +91,7 @@ jobs:
           source .venv/bin/activate
           python data_drift.py
 
-      # Step 9: Retrain Model
+      # Step 10: Retrain Model
       - name: Retrain Model
         env:
           DB_NAME: fraud_detection_db
@@ -91,7 +103,7 @@ jobs:
           source .venv/bin/activate
           python retrain.py
 
-      # Step 10: Deploy the Model
+      # Step 11: Deploy the Model
       - name: Deploy Model
         env:
           DB_NAME: fraud_detection_db
@@ -103,7 +115,7 @@ jobs:
           source .venv/bin/activate
           python deploy_model.py
 
-      # Step 11: Run Main Pipeline Script
+      # Step 12: Run Main Pipeline Script
       - name: Run Main Pipeline Script
         env:
           DB_NAME: fraud_detection_db
@@ -115,16 +127,16 @@ jobs:
           source .venv/bin/activate
           python main.py
 
-      # Step 12: Notify the Team
+      # Step 13: Notify the Team
       - name: Notify Team on Success
         if: success()
         uses: slackapi/slack-github-action@v1.23.0
         with:
           channel-id: your-slack-channel-id
-          text: "✅ MLOps pipeline completed successfully with database integration!"
+          text: "✅ MLOps pipeline completed successfully with database integration and backup loaded!"
           bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
 
-      # Step 13: Cleanup Docker Containers
+      # Step 14: Cleanup Docker Containers
       - name: Clean up Docker containers
         run: |
           docker-compose down
