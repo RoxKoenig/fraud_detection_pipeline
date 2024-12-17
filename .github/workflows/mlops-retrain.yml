@@ -30,18 +30,29 @@ jobs:
           pip install -r requirements.txt
           pip install psycopg2
 
-      # Step 4: Set up Docker Compose
+      # Step 4: Set up Docker and Docker Compose
       - name: Install Docker Compose (if missing)
         run: |
           sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
 
-      # Step 5: Start Services with Docker Compose
-      - name: Start Services with Docker Compose
+      # Step 5: Build and Start Services with Docker Compose
+      - name: Build and Start Docker Services
         run: |
-          docker-compose up -d
+          docker-compose up --build -d
           echo "Waiting for services to be ready..."
-          sleep 20
+          for i in {1..30}; do
+            curl --silent --fail http://localhost:5001 || true
+            if [ $? -eq 0 ]; then
+              echo "MLflow server is ready."
+              exit 0
+            fi
+            echo "MLflow server not ready yet. Retrying in 5 seconds..."
+            sleep 5
+          done
+          echo "MLflow server failed to start."
+          docker-compose logs
+          exit 1
 
       # Step 6: Load Database Backup
       - name: Load Database Backup
