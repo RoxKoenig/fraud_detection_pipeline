@@ -102,11 +102,15 @@ jobs:
           DB_PORT: 5432
         run: |
           source .venv/bin/activate
+          
           echo "Generating monthly data..."
           python generate_monthly_data.py --month 1 --output_path output.csv
 
           echo "Detecting data drift..."
           python data_drift.py
+          
+          echo "Running main script..."
+          python main.py
 
           echo "Retraining model..."
           python retrain.py
@@ -114,9 +118,7 @@ jobs:
           echo "Deploying model..."
           python deploy_model.py
 
-          echo "Running main script..."
-          python main.py
-
+          
       # Step 10: Notify the Team on Success
       - name: Notify Team on Success
         if: success()
