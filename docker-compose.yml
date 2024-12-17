@@ -17,12 +17,14 @@ services:
       timeout: 5s
       retries: 5
 
-  # MLflow Server Service
+  # MLflow Server Service (Build locally)
   mlflow:
-    image: mlflow/mlflow:latest  # Use the official MLflow image from Docker Hub
+    build:
+      context: .
+      dockerfile: mlflow.Dockerfile
     container_name: mlflow_server
     ports:
-      - "5001:5001"  # Expose MLflow server on port 5001
+      - "5001:5001"  # Expose MLflow on port 5001
     environment:
       BACKEND_STORE_URI: "postgresql://admin:password@fraud_detection_db:5432"
       ARTIFACT_ROOT: "/mlflow/artifacts"
@@ -50,9 +52,9 @@ services:
       dockerfile: Dockerfile
     container_name: flask_mlflow_app
     ports:
-      - "5000:5000"  # Flask/Gunicorn runs on port 5000
+      - "5000:5000"
     volumes:
-      - .:/app  # Mount the application files
+      - .:/app
     environment:
       - FLASK_ENV=development
       - MLFLOW_TRACKING_URI=http://mlflow_server:5001
