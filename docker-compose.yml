@@ -1,7 +1,8 @@
 services:
+  # PostgreSQL Service
   postgres:
     container_name: fraud_detection_db
-    image: postgres:17  # Use a stable version
+    image: postgres:17  # Use the stable PostgreSQL version
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password
@@ -11,29 +12,59 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "admin", "-d", "fraud_detection_db"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d fraud_detection_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # MLflow Server Service
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:2.10.0  # MLflow official image
+    container_name: mlflow_server
+    ports:
+      - "5001:5001"  # Map MLflow to external port 5001
+    environment:
+      BACKEND_STORE_URI: "postgresql://admin:password@fraud_detection_db:5432"
+      ARTIFACT_ROOT: "/mlflow/artifacts"
+    volumes:
+      - mlflow_data:/mlflow/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      mlflow server 
+      --backend-store-uri postgresql://admin:password@fraud_detection_db:5432 
+      --default-artifact-root /mlflow/artifacts 
+      --host 0.0.0.0 
+      --port 5001
+
+  # Flask Application Service
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: flask_mlflow_app
     ports:
-      - "5000:5000"
-      - "5001:5001"
+      - "5000:5000"  # Flask/Gunicorn runs on port 5000
     volumes:
-      - .:/app
+      - .:/app  # Mount the application files
     environment:
       - FLASK_ENV=development
-      - MLFLOW_TRACKING_URI=postgresql://admin:password@fraud_detection_db:5432/mlflow
+      - MLFLOW_TRACKING_URI=http://mlflow_server:5001
     depends_on:
       postgres:
+        condition: service_healthy
+      mlflow:
         condition: service_healthy
 
 volumes:
   postgres_data:
     name: fraud-detection_postgres_data
+  mlflow_data:
+    name: fraud-detection_mlflow_data
 
