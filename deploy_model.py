@@ -4,17 +4,19 @@ import numpy as np
 from pydantic import BaseModel
 import os
 import subprocess
+import time
+import requests
 
 # MLflow Tracking URI
 MLFLOW_TRACKING_URI = "http://localhost:5001"
 
-# Path to the locally saved model (ensure retrain.py saves the model here)
+# Path to the locally saved model
 LOCAL_MODEL_PATH = "./fraud_detection_model.pkl"
 
-# Initialize Flask app
+# Flask App Initialization
 app = Flask(__name__)
 
-# Function to load the locally saved model
+# Load the locally saved model
 def load_local_model(model_path):
     """
     Load the model from a local file path.
@@ -30,27 +32,10 @@ def load_local_model(model_path):
         print(f"❌ Error loading local model: {e}")
         return None
 
-# Function to free up the port
-def free_port(port):
-    """
-    Free up the port if it's in use.
-    """
-    try:
-        print(f"Checking if port {port} is in use...")
-        output = subprocess.check_output(f"lsof -i :{port}", shell=True, stderr=subprocess.DEVNULL).decode()
-        if output:
-            print(f"Port {port} is in use. Terminating process...")
-            subprocess.run(f"lsof -ti:{port} | xargs kill -9", shell=True, check=False)
-            print(f"✅ Port {port} freed successfully.")
-    except subprocess.CalledProcessError:
-        print(f"✅ Port {port} was not in use.")
-    except Exception as e:
-        print(f"⚠️ Error freeing port {port}: {e}")
-
 # Load the model
 model = load_local_model(LOCAL_MODEL_PATH)
 
-# Pydantic class for input validation
+# Pydantic input validation
 class PredictionRequest(BaseModel):
     feature1: float
     feature2: float
@@ -60,9 +45,6 @@ class PredictionRequest(BaseModel):
 # Prediction endpoint
 @app.route('/predict', methods=['POST'])
 def predict():
-    """
-    Predict endpoint to receive input and return predictions.
-    """
     try:
         data = request.get_json()
         prediction_request = PredictionRequest(**data)
@@ -77,27 +59,46 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-# Root endpoint
+# Health check endpoint
 @app.route('/')
 def home():
-    """
-    Health check endpoint.
-    """
     return f"Fraud Detection Model is running and connected locally. MLflow URI: {MLFLOW_TRACKING_URI}"
 
 if __name__ == '__main__':
-    # Define the port and free it if in use
+    # Use Gunicorn to run the app
     port = int(os.environ.get("FLASK_PORT", 5000))
     print(f"Starting the app using Gunicorn on port {port}...")
-    try:
-        # Free up the port before starting Gunicorn
-        free_port(port)
 
-        # Run the application using Gunicorn
-        subprocess.run(
-            f"gunicorn --workers 4 --bind 0.0.0.0:{port} deploy_model:app",
-            shell=True,
-            check=True
-        )
+    try:
+        # Check if the port is in use and free it
+        print("Checking if port is in use...")
+        subprocess.run(f"sudo fuser -k {port}/tcp", shell=True, check=False)
+
+        # Start Gunicorn server in the background
+        print("Starting Gunicorn server...")
+        gunicorn_command = f"gunicorn --workers 4 --bind 0.0.0.0:{port} deploy_model:app"
+        gunicorn_process = subprocess.Popen(gunicorn_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        # Wait for server to start
+        time.sleep(5)  # Give the server a few seconds to boot
+
+        # Verify if the server is up by calling the root endpoint
+        try:
+            response = requests.get(f"http://127.0.0.1:{port}")
+            if response.status_code == 200:
+                print(f"✅ Server is running successfully on port {port}.")
+                print(response.text)
+                gunicorn_process.terminate()  # Stop the Gunicorn server for CI/CD
+                print("✅ Gunicorn server terminated after successful verification.")
+            else:
+                print(f"❌ Server failed to start. HTTP Status: {response.status_code}")
+                gunicorn_process.terminate()
+                exit(1)  # Mark failure for the pipeline
+        except requests.ConnectionError:
+            print("❌ Unable to connect to the Gunicorn server.")
+            gunicorn_process.terminate()
+            exit(1)
+
     except subprocess.CalledProcessError as e:
         print(f"❌ Error while starting Gunicorn: {e}")
+        exit(1)
