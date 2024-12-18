@@ -131,25 +131,7 @@ jobs:
           done
           python deploy_model.py
 
-      # Step 10: Notify Team on Success
-      - name: Notify Team on Success
-        if: success()
-        uses: slackapi/slack-github-action@v1.23.0
-        with:
-          channel-id: your-slack-channel-id
-          text: "✅ MLOps pipeline completed successfully with database integration and model deployment!"
-          bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
-
-      # Step 11: Notify Team on Failure
-      - name: Notify Team on Failure
-        if: failure()
-        uses: slackapi/slack-github-action@v1.23.0
-        with:
-          channel-id: your-slack-channel-id
-          text: "❌ MLOps pipeline failed. Check the logs for details."
-          bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
-
-      # Step 12: Clean Up Docker Containers
+      # Step 10: Clean Up Docker Containers
       - name: Clean Up Docker Containers
         run: |
           echo "Cleaning up Docker containers..."
