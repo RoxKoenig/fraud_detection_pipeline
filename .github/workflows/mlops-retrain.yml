@@ -25,10 +25,12 @@ jobs:
 
       # Step 3: Download Previous Historical Data from Artifacts (if cache not available)
       - name: Download Historical Data (if available)
-        uses: actions/download-artifact@v4  # ✅ Updated to v4
+        id: download-historical-data
+        uses: actions/download-artifact@v4
         with:
           name: historical-data
           path: ./
+        continue-on-error: true  # Continue even if the artifact is not found
 
       # Step 4: Set Up Python
       - name: Setup Python
@@ -148,7 +150,7 @@ jobs:
 
       # Step 12: Save Updated Historical Data to Cache and Artifacts
       - name: Save Updated Historical Data
-        uses: actions/upload-artifact@v4  # ✅ Updated to v4
+        uses: actions/upload-artifact@v4
         with:
           name: historical-data
           path: historical_data.csv
@@ -158,4 +160,3 @@ jobs:
         run: |
           echo "Cleaning up Docker containers..."
           docker-compose down
-
