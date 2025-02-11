@@ -160,3 +160,4 @@ jobs:
         run: |
           echo "Cleaning up Docker containers..."
           docker-compose down
+
