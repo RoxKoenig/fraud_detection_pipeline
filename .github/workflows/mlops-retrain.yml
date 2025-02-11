@@ -25,7 +25,7 @@ jobs:
 
       # Step 3: Download Previous Historical Data from Artifacts (if cache not available)
       - name: Download Historical Data (if available)
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4  # ✅ Updated to v4
         with:
           name: historical-data
           path: ./
@@ -148,7 +148,7 @@ jobs:
 
       # Step 12: Save Updated Historical Data to Cache and Artifacts
       - name: Save Updated Historical Data
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # ✅ Updated to v4
         with:
           name: historical-data
           path: historical_data.csv
