@@ -14,15 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Restore cached historical data (optional, but usually not needed with artifact use)
-      - name: Restore Cached Historical Data
-        uses: actions/cache@v3
-        with:
-          path: data/historical_data.csv
-          key: fraud-historical-data-${{ github.run_id }}
-          restore-keys: fraud-historical-data-
-
-      # Download previous historical data (artifact)
+      # Download historical data (artifact from last run)
       - name: Download Historical Data (if available)
         id: download-historical-data
         uses: actions/download-artifact@v4
@@ -62,13 +54,11 @@ jobs:
         run: |
           docker-compose up --build -d
 
-          # Wait for PostgreSQL readiness
           for i in {1..30}; do
             docker exec fraud_detection_db pg_isready -U admin -d fraud_detection_db && break
             sleep 5
           done
 
-          # Wait for MLflow readiness
           for i in {1..30}; do
             curl --silent --fail http://localhost:5001 && break
             sleep 5
@@ -102,19 +92,26 @@ jobs:
         run: |
           source .venv/bin/activate
 
-          echo "Generating monthly data..."
-          python generate_monthly_data.py --month 1 --output_path output.csv
+          # Dynamically get month number
+          MONTH=$(date +%-m)
 
-          echo "Detecting data drift..."
+          echo "📦 Generating monthly data for month: $MONTH"
+          python generate_monthly_data.py --month $MONTH --output_path output.csv
+
+          echo "🔍 Detecting data drift..."
           python data_drift.py
 
-          echo "Running main pipeline..."
+          echo "📁 Output files:"
+          ls -la
+          ls -la data
+
+          echo "🧠 Running main pipeline..."
           python main.py
 
-          echo "Retraining model..."
+          echo "🔁 Retraining model..."
           python retrain.py
 
-          echo "Deploying model..."
+          echo "🚀 Deploying model..."
           for port in 5000; do
             pid=$(sudo lsof -ti :$port) || true
             if [ -n "$pid" ]; then
@@ -123,8 +120,8 @@ jobs:
           done
           python deploy_model.py
 
-      # ✅ Upload updated historical data to artifacts
       - name: Upload Updated Historical Data
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: historical-data
