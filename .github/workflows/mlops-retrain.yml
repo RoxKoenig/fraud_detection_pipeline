@@ -3,7 +3,7 @@ name: MLOps Pipeline for Fraud Detection with Database Connection
 on:
   schedule:
     - cron: '0 0 1 * *'  # Run on the 1st of every month
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:
 
 jobs:
   pipeline:
@@ -11,34 +11,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout Repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Restore Cached Historical Data
+      # Restore cached historical data (optional, but usually not needed with artifact use)
       - name: Restore Cached Historical Data
         uses: actions/cache@v3
         with:
-          path: historical_data.csv
+          path: data/historical_data.csv
           key: fraud-historical-data-${{ github.run_id }}
           restore-keys: fraud-historical-data-
 
-      # Step 3: Download Previous Historical Data from Artifacts (if cache not available)
+      # Download previous historical data (artifact)
       - name: Download Historical Data (if available)
         id: download-historical-data
         uses: actions/download-artifact@v4
         with:
           name: historical-data
-          path: ./
-        continue-on-error: true  # Continue even if the artifact is not found
+          path: data/
+        continue-on-error: true
 
-      # Step 4: Set Up Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.12.3'
 
-      # Step 5: Install Python Dependencies
       - name: Install Python dependencies
         run: |
           python -m venv .venv
@@ -47,61 +44,42 @@ jobs:
           pip install -r requirements.txt
           pip install psycopg2
 
-      # Step 6: Install Docker Compose
       - name: Install Docker Compose
         run: |
           sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
 
-      # Step 7: Clean Up Ports Before Starting Services
       - name: Free Ports 5000 and 5001
         run: |
-          echo "Freeing up ports 5000 and 5001..."
           for port in 5000 5001; do
             pid=$(sudo lsof -ti :$port) || true
             if [ -n "$pid" ]; then
-              echo "Killing process on port $port (PID: $pid)"
               sudo kill -9 $pid || true
-            else
-              echo "No process found on port $port."
             fi
           done
 
-      # Step 8: Build and Start Docker Services
       - name: Build and Start Docker Services
         run: |
           docker-compose up --build -d
-          echo "Waiting for services to be ready..."
 
           # Wait for PostgreSQL readiness
           for i in {1..30}; do
             docker exec fraud_detection_db pg_isready -U admin -d fraud_detection_db && break
-            echo "PostgreSQL not ready yet. Retrying in 5 seconds..."
             sleep 5
           done
 
           # Wait for MLflow readiness
           for i in {1..30}; do
-            curl --silent --fail http://localhost:5001 || true
-            if [ $? -eq 0 ]; then
-              echo "MLflow server is ready."
-              break
-            fi
-            echo "MLflow server not ready yet. Retrying in 5 seconds..."
+            curl --silent --fail http://localhost:5001 && break
             sleep 5
           done
 
-      # Step 9: Show Logs on Failure
       - name: Show Logs on Failure
         if: failure()
         run: |
-          echo "Showing PostgreSQL logs..."
           docker logs fraud_detection_db || true
-
-          echo "Showing MLflow logs..."
           docker logs mlflow_server || true
 
-      # Step 10: Load Database Backup
       - name: Load Database Backup
         env:
           DB_USER: admin
@@ -109,13 +87,11 @@ jobs:
           DB_NAME: fraud_detection_db
         run: |
           if [ -f "fraud_detection_db_backup.sql" ]; then
-            echo "Loading database backup..."
             docker exec -i fraud_detection_db psql -U $DB_USER -d $DB_NAME < fraud_detection_db_backup.sql
           else
-            echo "⚠️ Database backup file not found. Skipping database restore step."
+            echo "No database backup found, skipping."
           fi
 
-      # Step 11: Run MLOps Pipeline Steps
       - name: Run MLOps Pipeline
         env:
           DB_NAME: fraud_detection_db
@@ -132,7 +108,7 @@ jobs:
           echo "Detecting data drift..."
           python data_drift.py
 
-          echo "Running main pipeline script..."
+          echo "Running main pipeline..."
           python main.py
 
           echo "Retraining model..."
@@ -142,22 +118,17 @@ jobs:
           for port in 5000; do
             pid=$(sudo lsof -ti :$port) || true
             if [ -n "$pid" ]; then
-              echo "Freeing port $port before deployment..."
               sudo kill -9 $pid || true
             fi
           done
           python deploy_model.py
 
-      # Step 12: Save Updated Historical Data to Cache and Artifacts
-      - name: Save Updated Historical Data
+      # ✅ Upload updated historical data to artifacts
+      - name: Upload Updated Historical Data
         uses: actions/upload-artifact@v4
         with:
           name: historical-data
-          path: historical_data.csv
+          path: data/historical_data.csv
 
-      # Step 13: Clean Up Docker Containers
       - name: Clean Up Docker Containers
-        run: |
-          echo "Cleaning up Docker containers..."
-          docker-compose down
-
+        run: docker-compose down
