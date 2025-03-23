@@ -5,119 +5,98 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Old (machine-specific path):
-# HISTORICAL_DATA_FOLDER = os.path.expanduser("~/SynologyDrive/Uni/Backups/Python Code/fraud-detection")
-
-# ✅ New (CI-friendly relative path):
+# Use CI-friendly relative path
 HISTORICAL_DATA_FOLDER = os.path.join(os.getcwd(), "data")
+HISTORICAL_DATA_FILE = os.path.join(HISTORICAL_DATA_FOLDER, "historical_data.csv")
+NEW_DATA_FILE = os.path.join(os.getcwd(), "output.csv")  # output from generate_monthly_data.py
 
 
 def ensure_folder_exists(folder_path):
-    """
-    Ensure the folder exists, and if not, create it.
-    """
-    try:
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path, exist_ok=True)
-            logging.info(f"Folder created: {folder_path}")
-        else:
-            logging.info(f"Folder already exists: {folder_path}")
-    except PermissionError as e:
-        logging.error(f"Permission denied while creating folder {folder_path}: {e}")
-        raise
-    except Exception as e:
-        logging.error(f"Error ensuring folder exists {folder_path}: {e}")
-        raise
+    """Ensure the folder exists, and if not, create it."""
+    os.makedirs(folder_path, exist_ok=True)
+    logging.info(f"Ensured folder exists: {folder_path}")
 
-def save_historical_data(data, file_name="historical_data.csv"):
-    """
-    Save historical data to a CSV file.
-    """
-    try:
-        ensure_folder_exists(HISTORICAL_DATA_FOLDER)
-        file_path = os.path.join(HISTORICAL_DATA_FOLDER, file_name)
-        if not isinstance(data, pd.DataFrame):
-            raise ValueError("Data to save is not a valid Pandas DataFrame.")
-        data.to_csv(file_path, index=False)
-        logging.info(f"Historical data saved successfully to {file_path}.")
-    except ValueError as ve:
-        logging.error(f"Value error while saving historical data: {ve}")
-    except PermissionError as e:
-        logging.error(f"Permission denied while saving data to {file_path}: {e}")
-    except Exception as e:
-        logging.error(f"Unexpected error while saving historical data: {e}")
 
-def load_historical_data(file_name="historical_data.csv"):
-    """
-    Load historical data from a CSV file.
-    """
-    file_path = os.path.join(HISTORICAL_DATA_FOLDER, file_name)
-    try:
-        if os.path.exists(file_path):
-            data = pd.read_csv(file_path)
-            logging.info(f"Historical data loaded successfully from {file_path}.")
+def save_historical_data(data):
+    """Save historical data to CSV."""
+    ensure_folder_exists(HISTORICAL_DATA_FOLDER)
+    if not isinstance(data, pd.DataFrame):
+        raise ValueError("Data to save is not a valid Pandas DataFrame.")
+    data.to_csv(HISTORICAL_DATA_FILE, index=False)
+    logging.info(f"Historical data saved to {HISTORICAL_DATA_FILE}")
+
+
+def load_historical_data():
+    """Load historical data from CSV."""
+    if os.path.exists(HISTORICAL_DATA_FILE):
+        try:
+            data = pd.read_csv(HISTORICAL_DATA_FILE)
+            logging.info(f"Loaded historical data from {HISTORICAL_DATA_FILE}")
             return data
-        else:
-            logging.warning(f"No historical data found at {file_path}.")
-            return None
-    except pd.errors.EmptyDataError:
-        logging.error(f"The file {file_path} is empty or corrupted.")
-        return None
-    except Exception as e:
-        logging.error(f"Unexpected error while loading historical data from {file_path}: {e}")
-        return None
+        except pd.errors.EmptyDataError:
+            logging.warning(f"{HISTORICAL_DATA_FILE} is empty or corrupted.")
+    else:
+        logging.warning(f"No historical data found at {HISTORICAL_DATA_FILE}")
+    return None
+
 
 def detect_data_drift(historical_data, new_data, threshold=0.05):
     """
-    Detect data drift by comparing historical and new distributions.
+    Detect data drift by comparing the distribution of fraud labels.
+    Returns True if drift is detected, False otherwise.
     """
-    if historical_data is None:
-        logging.warning("No historical data available. Drift detection skipped.")
+    if historical_data is None or new_data is None:
+        logging.warning("Insufficient data to detect drift.")
         return False
 
     try:
-        # Normalize distributions
-        historical_dist = historical_data.set_index('fraud_label')['count'] / historical_data['count'].sum()
-        new_dist = new_data.set_index('fraud_label')['count'] / new_data['count'].sum()
+        # Count label distribution
+        hist_counts = historical_data['fraud_flag'].value_counts(normalize=True)
+        new_counts = new_data['fraud_flag'].value_counts(normalize=True)
 
-        # Calculate drift metrics
-        drift_metrics = abs(historical_dist - new_dist).fillna(0)
-        logging.info(f"Drift metrics: {drift_metrics}")
+        # Align both distributions
+        all_labels = set(hist_counts.index).union(set(new_counts.index))
+        hist_dist = hist_counts.reindex(all_labels, fill_value=0)
+        new_dist = new_counts.reindex(all_labels, fill_value=0)
 
-        # Check for drift exceeding threshold
-        if (drift_metrics > threshold).any():
-            logging.info("Data drift detected.")
-            return True
+        # Calculate absolute differences
+        drift_metrics = (hist_dist - new_dist).abs()
+        logging.info(f"Drift metrics:\n{drift_metrics}")
+
+        drift = (drift_metrics > threshold).any()
+        if drift:
+            logging.info("⚠️ Data drift detected.")
         else:
-            logging.info("No significant data drift detected.")
-            return False
-    except KeyError as e:
-        logging.error(f"Key error in detecting data drift: {e}")
-        return False
+            logging.info("✅ No significant data drift detected.")
+
+        return drift
+
     except Exception as e:
-        logging.error(f"Unexpected error in detecting data drift: {e}")
+        logging.error(f"Error during drift detection: {e}")
         return False
 
-# Example usage
-if __name__ == "__main__":
-    # Example new data with drift
-    new_data = pd.DataFrame({
-        'fraud_label': ['Fraud', 'Not Fraud'],
-        'count': [129858, 70142]
-    })
 
-    # Load historical data
+if __name__ == "__main__":
+    # Load new data from generate_monthly_data.py
+    if not os.path.exists(NEW_DATA_FILE):
+        logging.error(f"New data file {NEW_DATA_FILE} not found.")
+        exit(1)
+
+    try:
+        new_data = pd.read_csv(NEW_DATA_FILE)
+        logging.info(f"New data loaded from {NEW_DATA_FILE}, shape: {new_data.shape}")
+    except Exception as e:
+        logging.error(f"Failed to load new data: {e}")
+        exit(1)
+
     historical_data = load_historical_data()
 
-    # Check if historical data exists
     if historical_data is None:
-        logging.info("No historical data found. Saving new data as the initial historical dataset.")
+        logging.info("No historical data found. Saving new data as baseline.")
         save_historical_data(new_data)
     else:
-        # Detect data drift
-        drift_detected = detect_data_drift(historical_data, new_data)
-        if drift_detected:
-            logging.info("Drift detected. Saving new data as historical.")
+        if detect_data_drift(historical_data, new_data):
+            logging.info("Updating historical data due to detected drift.")
             save_historical_data(new_data)
         else:
-            logging.info("No drift detected. Historical data remains unchanged.")
+            logging.info("Keeping existing historical data. No update needed.")
