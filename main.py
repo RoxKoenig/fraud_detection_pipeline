@@ -13,7 +13,8 @@ from imblearn.over_sampling import SMOTE
 import mlflow
 import mlflow.sklearn
 import joblib
-from data_drift import load_historical_data, detect_data_drift, save_historical_data
+import subprocess  # ✅ for calling data_drift.py
+from data_drift import load_historical_data, save_historical_data
 
 # Suppress warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -151,23 +152,21 @@ if __name__ == "__main__":
         historical_data = load_historical_data()
         new_data = fetch_data(query, db_config)
 
-        fraud_label_dist = new_data['fraud_label'].replace({
-            'Betrug': 'Fraud', 'Kein Betrug': 'Not Fraud'
-        }).value_counts(normalize=True).reset_index(name='count')
-        fraud_label_dist.columns = ['fraud_label', 'count']
+        # ✅ Save new raw data to output.csv for drift detection
+        new_data.to_csv("output.csv", index=False)
+        logging.info("New data saved to output.csv for drift detection.")
 
-        drift_detected = detect_data_drift(historical_data, fraud_label_dist, threshold=0.05)
+        # ✅ Call data_drift.py as subprocess (exit 10 = drift)
+        result = subprocess.run(["python", "data_drift.py"])
+        drift_detected = result.returncode == 10
 
         if drift_detected:
             logging.info("Data drift detected. Retraining the model...")
             X = new_data.drop(columns=['fraud_label'])
             y = new_data['fraud_label'].replace({'Betrug': 1, 'Kein Betrug': 0})
             train_and_save_pipeline(X, y)
-            save_historical_data(fraud_label_dist)
         else:
             logging.info("No data drift detected. Skipping retraining.")
-            if historical_data is None:
-                save_historical_data(fraud_label_dist)
 
     except Exception as e:
         logging.error(f"Pipeline terminated due to an error: {e}")
