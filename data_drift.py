@@ -5,8 +5,12 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Folder to store historical data
-HISTORICAL_DATA_FOLDER = os.path.expanduser("~/SynologyDrive/Uni/Backups/Python Code/fraud-detection")
+# Old (machine-specific path):
+# HISTORICAL_DATA_FOLDER = os.path.expanduser("~/SynologyDrive/Uni/Backups/Python Code/fraud-detection")
+
+# ✅ New (CI-friendly relative path):
+HISTORICAL_DATA_FOLDER = os.path.join(os.getcwd(), "data")
+
 
 def ensure_folder_exists(folder_path):
     """
